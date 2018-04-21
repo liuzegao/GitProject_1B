@@ -104,15 +104,14 @@ int main(int argc, char *argv[])
           server->h_length);
     serv_addr.sin_port = htons(portno);
     if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0)
-        error("ERROR connecting");
+        fprintf(stderr,"ERROR connecting");
     bzero(buffer,256);
     struct pollfd pollFdGroup[2];
     pollFdGroup[0].fd = 0;
     pollFdGroup[1].fd = sockfd;
     pollFdGroup[0].events = POLLIN | POLLHUP | POLLERR;
     pollFdGroup[1].events = POLLIN | POLLHUP | POLLERR;
-    
-    
+    changeInputMode();
     while(1){
         int returnValue = poll(pollFdGroup, 3, 0);
         if (returnValue < 0) {
@@ -120,12 +119,36 @@ int main(int argc, char *argv[])
             exit(1);
         }
         if ((pollFdGroup[0].revents & POLLIN)){
-            int count = read(0,buffer,255);
-            write(sockfd,buffer,count);
+            char stdinBuffer = '\0';
+            readWithError(0,&stdinBuffer, 1);
+            if(stdinBuffer == '\04'){
+                //close(toChildPip[1]);
+                exit(0);
+            }else if(stdinBuffer == '\03'){
+                //kill(fpid, SIGINT);
+                exit(0);
+            }else if(stdinBuffer== '\r' || stdinBuffer == '\n'){
+                char tempBuffer = {'\n'};
+                writeWithError(sockfd,&tempBuffer,sizeof(tempBuffer));
+                char templineBuffer[2] = {'\r','\n'};
+                writeWithError(1,templineBuffer,sizeof(templineBuffer));
+            }else{
+                writeWithError(sockfd, &stdinBuffer, sizeof(stdinBuffer));
+                writeWithError(1,&stdinBuffer,sizeof(stdinBuffer));
+            }
         }
         if ((pollFdGroup[1].revents & POLLIN)){
-            int count = read(sockfd,buffer,255);
-            write(1,buffer,count);
+            char sockBuffer[2048] = "\0";
+            int count = readWithError(sockfd, sockBuffer, 2048); // read from shell pipe
+            int i;
+            for(i = 0;i<count;i++){
+                if(sockBuffer[i] == '\n'){
+                    char tempshellBuffer[2] = {'\r','\n'};
+                    writeWithError(1,tempshellBuffer,sizeof(tempshellBuffer));
+                }else{
+                    writeWithError(1,&sockBuffer[i],1);
+                }
+            }
         }
     }
 }
