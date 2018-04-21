@@ -6,6 +6,7 @@
 //  Copyright © 2018 pro. All rights reserved.
 //
 
+#include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -15,17 +16,70 @@
 #include <unistd.h>
 #include <poll.h>
 #include <errno.h>
+#include <termios.h>
 
-void error(char *msg)
+static struct termios saved_attributes;
+
+void closeWithError(int pipe)
 {
-    perror(msg);
-    exit(0);
+    int RC = close(pipe);
+    if (RC == -1){
+        fprintf(stderr, "Error:%s.\n", strerror(errno));
+        exit(1);
+    }
+}
+
+int readWithError(int fd, char* buffer, int size)
+{
+    int RC = read(fd, buffer, size);
+    if (RC == -1){
+        fprintf(stderr, "Error:%s.\n", strerror(errno));
+        exit(1);
+    }
+    return RC;
+}
+
+int writeWithError(int fd, char* buffer, int size)
+{
+    int RC = write(fd, buffer, size);
+    if (RC == -1){
+        fprintf(stderr, "Error:%s.\n", strerror(errno));
+        exit(1);
+    }
+    return RC;
+}
+
+//GNU FUNCTION, EXAM!
+void restoreInputMode(void)
+{
+    tcsetattr (0, TCSANOW, &saved_attributes);
+}
+
+void changeInputMode(void)
+{
+    //Make sure stdin is in terminal mode
+    if (!isatty(0))
+    {
+        fprintf (stderr, "Error: stdin is not in terminal mode.\n");
+        exit(1);
+    }
+    
+    //Save the original terminal mode
+    tcgetattr(0, &saved_attributes);
+    atexit(restoreInputMode);
+    
+    struct termios tattr;
+    //Change to new terminal mode
+    tcgetattr (0, &tattr);
+    tattr.c_iflag = ISTRIP;
+    tattr.c_oflag = 0;
+    tattr.c_lflag = 0; //Vmin is by default 1, Vtime is by default 0
+    tcsetattr (0, TCSANOW, &tattr);
 }
 
 int main(int argc, char *argv[])
 {
     int sockfd, portno;
-    
     struct sockaddr_in serv_addr;
     struct hostent *server;
     
@@ -37,7 +91,7 @@ int main(int argc, char *argv[])
     portno = atoi(argv[2]);
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0)
-        error("ERROR opening socket");
+        fprintf(stderr,"ERROR opening socket");
     server = gethostbyname(argv[1]);
     if (server == NULL) {
         fprintf(stderr,"ERROR, no such host\n");
@@ -57,6 +111,8 @@ int main(int argc, char *argv[])
     pollFdGroup[1].fd = sockfd;
     pollFdGroup[0].events = POLLIN | POLLHUP | POLLERR;
     pollFdGroup[1].events = POLLIN | POLLHUP | POLLERR;
+    
+    
     while(1){
         int returnValue = poll(pollFdGroup, 3, 0);
         if (returnValue < 0) {

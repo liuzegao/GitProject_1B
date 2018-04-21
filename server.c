@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <termios.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <getopt.h>
 #include <poll.h>
@@ -31,7 +30,7 @@ int fpid;
 void catch(){
     kill(fpid,13);
     fprintf (stderr, "Error: receive SIGPIPE.\n");
-    _exit(4);
+    _exit(0);
 }
 
 void closeWithError(int pipe)
@@ -136,7 +135,6 @@ int main(int argc, char * argv[]) {
         
         closeWithError(toChildPip[0]);
         closeWithError(toParentPip[1]);
-        char parentbuffer;
         char newbuffer[2048] = "\0";
         int returnValue;
         struct pollfd pollFdGroup[3];
@@ -155,20 +153,14 @@ int main(int argc, char * argv[]) {
                 exit(1);
             }
             if ((pollFdGroup[0].revents & POLLIN)){
-                readWithError(0,&parentbuffer, 1);
-                if(parentbuffer == '\04'){
-                    fprintf(stderr,"ANC \n");
-                    close(toChildPip[1]);
-                }else if(parentbuffer == '\03'){
-                    fprintf(stderr,"ANC \n");
-                    kill(fpid, SIGINT);
-                }else{
-                    writeWithError(toChildPip[1], &parentbuffer, sizeof(parentbuffer));
-                }
+                char buffer[256];
+                bzero(buffer,256);
+                int count = readWithError(0,buffer, 256);
+                writeWithError(toChildPip[1], buffer, count);
             }
             if ((pollFdGroup[1].revents & POLLIN)) {
                 int count = readWithError(toParentPip[0], newbuffer, 2048); // read from shell pipe
-                writeWithError(1,newbuffer,count);
+                writeWithError(newsockfd,newbuffer,count);
             }
             if ((pollFdGroup[1].revents & (POLLHUP | POLLERR))) {
                 fprintf(stderr,"ANC \n");
@@ -179,8 +171,24 @@ int main(int argc, char * argv[]) {
                 char buffer[256];
                 bzero(buffer,256);
                 int count = readWithError(newsockfd,buffer,255);
-                writeWithError(1,buffer,count);
-                writeWithError(newsockfd,"I got your message \n",21);
+                if(count == 0){
+                    fprintf(stderr,"received EOF from client \n");
+                    close(toChildPip[1]);
+                    int childstatus;
+                    if (waitpid(fpid, &childstatus, 0) == -1) {
+                        fprintf(stderr, "error: waitpid failed");
+                        exit(EXIT_FAILURE);
+                    }
+                    const int higher = WEXITSTATUS(childstatus);
+                    const int lower = WTERMSIG(childstatus);
+                    fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d\n", lower, higher);
+                    exit(0);
+                }
+                writeWithError(toChildPip[1],buffer,count);
+            }
+            if ((pollFdGroup[2].revents & (POLLHUP | POLLERR))) {
+                fprintf(stderr,"client socket disconnected \n");
+                exit(0);
             }
         }
     }
