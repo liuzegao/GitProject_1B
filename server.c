@@ -112,9 +112,7 @@ int main(int argc, char * argv[]) {
     }else{//parent process
         //Close useless fd
         int sockfd, newsockfd, portno, clilen;
-        char buffer[256];
         struct sockaddr_in serv_addr, cli_addr;
-        int n;
         if (argc < 2) {
             fprintf(stderr,"ERROR, no port provided\n");
             exit(1);
@@ -130,33 +128,28 @@ int main(int argc, char * argv[]) {
         if (bind(sockfd, (struct sockaddr *) &serv_addr,
                  sizeof(serv_addr)) < 0)
             fprintf(stderr,"ERROR on binding");
-        listen(sockfd,5);
+        listen(sockfd,1);
         clilen = sizeof(cli_addr);
         newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
         if (newsockfd < 0)
             fprintf(stderr,"ERROR on accept");
-        bzero(buffer,256);
-        n = read(newsockfd,buffer,255);
-        if (n < 0) fprintf(stderr,"ERROR reading from socket");
-        printf("Here is the message: %s\n",buffer);
-        n = write(newsockfd,"I got your message",18);
-        if (n < 0) fprintf(stderr,"ERROR writing to socket");
-        return 0;
         
         closeWithError(toChildPip[0]);
         closeWithError(toParentPip[1]);
         char parentbuffer;
         char newbuffer[2048] = "\0";
         int returnValue;
-        struct pollfd pollFdGroup[2];
+        struct pollfd pollFdGroup[3];
         pollFdGroup[0].fd = 0;
         pollFdGroup[1].fd = toParentPip[0];
+        pollFdGroup[2].fd = newsockfd;
         pollFdGroup[0].events = POLLIN | POLLHUP | POLLERR;
         pollFdGroup[1].events = POLLIN | POLLHUP | POLLERR;
+        pollFdGroup[2].events = POLLIN | POLLHUP | POLLERR;
         //Poll
         while (1) {
             // do a poll and check for errors
-            returnValue = poll(pollFdGroup, 2, 0);
+            returnValue = poll(pollFdGroup, 3, 0);
             if (returnValue < 0) {
                 fprintf(stderr, "Error:%s.\n", strerror(errno));
                 exit(1);
@@ -180,6 +173,14 @@ int main(int argc, char * argv[]) {
             if ((pollFdGroup[1].revents & (POLLHUP | POLLERR))) {
                 fprintf(stderr,"ANC \n");
                 exit(0);
+            }
+            if ((pollFdGroup[2].revents & POLLIN)){
+                //fprintf(stderr,"BREAK 1 \n");
+                char buffer[256];
+                bzero(buffer,256);
+                int count = readWithError(newsockfd,buffer,255);
+                writeWithError(1,buffer,count);
+                writeWithError(newsockfd,"I got your message \n",21);
             }
         }
     }
