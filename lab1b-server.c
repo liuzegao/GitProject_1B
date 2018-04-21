@@ -121,7 +121,7 @@ int main(int argc, char * argv[]) {
         sockfd = socket(AF_INET, SOCK_STREAM, 0);
         if (sockfd < 0)
             fprintf(stderr,"ERROR opening socket");
-        bzero((char *) &serv_addr, sizeof(serv_addr));
+        memset((char *) &serv_addr, 0, sizeof(serv_addr));
         portno = atoi(argv[1]);
         serv_addr.sin_family = AF_INET;
         serv_addr.sin_addr.s_addr = INADDR_ANY;
@@ -158,7 +158,7 @@ int main(int argc, char * argv[]) {
             }
             if ((pollFdGroup[0].revents & POLLIN)){
                 char buffer[256];
-                bzero(buffer,256);
+                memset(buffer,0,256);
                 int count = readWithError(0,buffer, 256);
                 writeWithError(toChildPip[1], buffer, count);
             }
@@ -173,7 +173,7 @@ int main(int argc, char * argv[]) {
             if ((pollFdGroup[2].revents & POLLIN)){
                 //fprintf(stderr,"BREAK 1 \n");
                 char buffer[256];
-                bzero(buffer,256);
+                memset(buffer,0,256);
                 int count = readWithError(newsockfd,buffer,255);
                 if(count == 0){
                     fprintf(stderr,"received EOF from client \n");
