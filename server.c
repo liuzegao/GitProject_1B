@@ -30,7 +30,7 @@ int fpid;
 
 void catch(){
     kill(fpid,13);
-    fprintf (stderr, "Error: receive SIGPIPE.\r\n");
+    fprintf (stderr, "Error: receive SIGPIPE.\n");
     _exit(4);
 }
 
@@ -38,7 +38,7 @@ void closeWithError(int pipe)
 {
     int RC = close(pipe);
     if (RC == -1){
-        fprintf(stderr, "Error:%s.\r\n", strerror(errno));
+        fprintf(stderr, "Error:%s.\n", strerror(errno));
         exit(1);
     }
 }
@@ -47,7 +47,7 @@ void dup2WithError(int pipe, int fd)
 {
     int RC = dup2(pipe,fd);
     if (RC == -1){
-        fprintf(stderr, "Error:%s.\r\n", strerror(errno));
+        fprintf(stderr, "Error:%s.\n", strerror(errno));
         exit(1);
     }
 }
@@ -56,7 +56,7 @@ int readWithError(int fd, char* buffer, int size)
 {
     int RC = read(fd, buffer, size);
     if (RC == -1){
-        fprintf(stderr, "Error:%s.\r\n", strerror(errno));
+        fprintf(stderr, "Error:%s.\n", strerror(errno));
         exit(1);
     }
     return RC;
@@ -66,7 +66,7 @@ int writeWithError(int fd, char* buffer, int size)
 {
     int RC = write(fd, buffer, size);
     if (RC == -1){
-        fprintf(stderr, "Error:%s.\r\n", strerror(errno));
+        fprintf(stderr, "Error:%s.\n", strerror(errno));
         exit(1);
     }
     return RC;
@@ -75,23 +75,23 @@ int writeWithError(int fd, char* buffer, int size)
 int main(int argc, char * argv[]) {
     
     if (signal(SIGPIPE, catch) == SIG_ERR ){
-        fprintf(stderr, "Error:%s.\r\n", strerror(errno));
+        fprintf(stderr, "Error:%s.\n", strerror(errno));
         exit(1);
     }
     
     int toChildPip[2],toParentPip[3];
     if(pipe(toChildPip) == -1){
-        fprintf(stderr, "Error:%s.\r\n", strerror(errno));
+        fprintf(stderr, "Error:%s.\n", strerror(errno));
         exit(1);
     }
     if(pipe(toParentPip) == -1){
-        fprintf(stderr, "Error:%s.\r\n", strerror(errno));
+        fprintf(stderr, "Error:%s.\n", strerror(errno));
         exit(1);
     }
     //Create a new procee with fork()
     fpid =fork();
     if(fpid < 0){ //fails fork()
-        fprintf(stderr, "Error:%s.\r\n", strerror(errno));
+        fprintf(stderr, "Error:%s.\n", strerror(errno));
         exit(1);
     }else if (fpid == 0){//Child process
         closeWithError(toChildPip[1]);
@@ -106,11 +106,43 @@ int main(int argc, char * argv[]) {
         execvp_argv[0] = execvp_filename;
         execvp_argv[1] = NULL;
         if (execvp(execvp_filename,execvp_argv)<0){
-            fprintf(stderr, "Error:%s.\r\n", strerror(errno));
+            fprintf(stderr, "Error:%s.\n", strerror(errno));
             exit(1);
         }
     }else{//parent process
         //Close useless fd
+        int sockfd, newsockfd, portno, clilen;
+        char buffer[256];
+        struct sockaddr_in serv_addr, cli_addr;
+        int n;
+        if (argc < 2) {
+            fprintf(stderr,"ERROR, no port provided\n");
+            exit(1);
+        }
+        sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        if (sockfd < 0)
+            fprintf(stderr,"ERROR opening socket");
+        bzero((char *) &serv_addr, sizeof(serv_addr));
+        portno = atoi(argv[1]);
+        serv_addr.sin_family = AF_INET;
+        serv_addr.sin_addr.s_addr = INADDR_ANY;
+        serv_addr.sin_port = htons(portno);
+        if (bind(sockfd, (struct sockaddr *) &serv_addr,
+                 sizeof(serv_addr)) < 0)
+            fprintf(stderr,"ERROR on binding");
+        listen(sockfd,5);
+        clilen = sizeof(cli_addr);
+        newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+        if (newsockfd < 0)
+            fprintf(stderr,"ERROR on accept");
+        bzero(buffer,256);
+        n = read(newsockfd,buffer,255);
+        if (n < 0) fprintf(stderr,"ERROR reading from socket");
+        printf("Here is the message: %s\n",buffer);
+        n = write(newsockfd,"I got your message",18);
+        if (n < 0) fprintf(stderr,"ERROR writing to socket");
+        return 0;
+        
         closeWithError(toChildPip[0]);
         closeWithError(toParentPip[1]);
         char parentbuffer;
@@ -126,16 +158,16 @@ int main(int argc, char * argv[]) {
             // do a poll and check for errors
             returnValue = poll(pollFdGroup, 2, 0);
             if (returnValue < 0) {
-                fprintf(stderr, "Error:%s.\r\n", strerror(errno));
+                fprintf(stderr, "Error:%s.\n", strerror(errno));
                 exit(1);
             }
             if ((pollFdGroup[0].revents & POLLIN)){
                 readWithError(0,&parentbuffer, 1);
                 if(parentbuffer == '\04'){
-                    fprintf(stderr,"ANC \r\n");
+                    fprintf(stderr,"ANC \n");
                     close(toChildPip[1]);
                 }else if(parentbuffer == '\03'){
-                    fprintf(stderr,"ANC \r\n");
+                    fprintf(stderr,"ANC \n");
                     kill(fpid, SIGINT);
                 }else{
                     writeWithError(toChildPip[1], &parentbuffer, sizeof(parentbuffer));
@@ -146,7 +178,7 @@ int main(int argc, char * argv[]) {
                 writeWithError(1,newbuffer,count);
             }
             if ((pollFdGroup[1].revents & (POLLHUP | POLLERR))) {
-                fprintf(stderr,"ANC \r\n");
+                fprintf(stderr,"ANC \n");
                 exit(0);
             }
         }
