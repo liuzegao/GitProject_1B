@@ -72,6 +72,36 @@ int writeWithError(int fd, char* buffer, int size)
     return RC;
 }
 
+void socketProcedure(int *newsockfd, int argc, char *argv[])
+{
+    int sockfd;
+    int portno;
+    socklen_t* restrict clilen;
+    struct sockaddr_in serv_addr, cli_addr;
+    if (argc < 2) {
+        fprintf(stderr,"ERROR, no port provided\n");
+        exit(1);
+    }
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0)
+        fprintf(stderr,"ERROR opening socket");
+    memset((char *) &serv_addr, 0, sizeof(serv_addr));
+    portno = atoi(argv[1]);
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
+    serv_addr.sin_port = htons(portno);
+    if (bind(sockfd, (struct sockaddr *) &serv_addr,
+             sizeof(serv_addr)) < 0)
+        fprintf(stderr,"ERROR on binding");
+    listen(sockfd,5);
+    //clilen = sizeof(cli_addr);
+    socklen_t client_addr_size = sizeof(cli_addr);
+    clilen = (socklen_t* restrict) &client_addr_size;
+    *newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, clilen);
+    if (*newsockfd < 0)
+        fprintf(stderr,"ERROR on accept");
+}
+
 int main(int argc, char * argv[]) {
     
     if (signal(SIGPIPE, catch) == SIG_ERR ){
@@ -111,31 +141,8 @@ int main(int argc, char * argv[]) {
         }
     }else{//parent process
         //Close useless fd
-        int sockfd, newsockfd, portno;
-        socklen_t* restrict clilen;
-        struct sockaddr_in serv_addr, cli_addr;
-        if (argc < 2) {
-            fprintf(stderr,"ERROR, no port provided\n");
-            exit(1);
-        }
-        sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        if (sockfd < 0)
-            fprintf(stderr,"ERROR opening socket");
-        memset((char *) &serv_addr, 0, sizeof(serv_addr));
-        portno = atoi(argv[1]);
-        serv_addr.sin_family = AF_INET;
-        serv_addr.sin_addr.s_addr = INADDR_ANY;
-        serv_addr.sin_port = htons(portno);
-        if (bind(sockfd, (struct sockaddr *) &serv_addr,
-                 sizeof(serv_addr)) < 0)
-            fprintf(stderr,"ERROR on binding");
-        listen(sockfd,5);
-        //clilen = sizeof(cli_addr);
-        socklen_t client_addr_size = sizeof(cli_addr);
-        clilen = (socklen_t* restrict) &client_addr_size;
-        newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, clilen);
-        if (newsockfd < 0)
-            fprintf(stderr,"ERROR on accept");
+        int newsockfd;
+        socketProcedure(&newsockfd, argc, argv);
         
         closeWithError(toChildPip[0]);
         closeWithError(toParentPip[1]);
@@ -192,7 +199,7 @@ int main(int argc, char * argv[]) {
             }
             if ((pollFdGroup[2].revents & (POLLHUP | POLLERR))) {
                 fprintf(stderr,"client socket disconnected \n");
-                close(sockfd);
+                close(newsockfd);
                 exit(0);
             }
         }
