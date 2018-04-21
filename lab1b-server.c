@@ -109,6 +109,10 @@ int main(int argc, char * argv[]) {
         exit(1);
     }
     
+    int newsockfd;
+    socketProcedure(&newsockfd, argc, argv);
+    
+    //Piping and forking procedure
     int toChildPip[2],toParentPip[3];
     if(pipe(toChildPip) == -1){
         fprintf(stderr, "Error:%s.\n", strerror(errno));
@@ -139,10 +143,8 @@ int main(int argc, char * argv[]) {
             fprintf(stderr, "Error:%s.\n", strerror(errno));
             exit(1);
         }
+        
     }else{//parent process
-        //Close useless fd
-        int newsockfd;
-        socketProcedure(&newsockfd, argc, argv);
         
         closeWithError(toChildPip[0]);
         closeWithError(toParentPip[1]);
