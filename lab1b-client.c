@@ -17,6 +17,7 @@
 #include <poll.h>
 #include <errno.h>
 #include <termios.h>
+#include <string.h>
 
 static struct termios saved_attributes;
 
@@ -121,10 +122,7 @@ int main(int argc, char *argv[])
         if ((pollFdGroup[0].revents & POLLIN)){
             char stdinBuffer = '\0';
             readWithError(0,&stdinBuffer, 1);
-            if(stdinBuffer == '\04'){
-                //close(toChildPip[1]);
-                exit(0);
-            }else if(stdinBuffer == '\03'){
+            if(stdinBuffer == '\03'){
                 //kill(fpid, SIGINT);
                 exit(0);
             }else if(stdinBuffer== '\r' || stdinBuffer == '\n'){

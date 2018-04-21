@@ -22,6 +22,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <string.h>
 
 char isThereShell = 'N';
 
@@ -110,7 +111,8 @@ int main(int argc, char * argv[]) {
         }
     }else{//parent process
         //Close useless fd
-        int sockfd, newsockfd, portno, clilen;
+        int sockfd, newsockfd, portno;
+        socklen_t* restrict clilen;
         struct sockaddr_in serv_addr, cli_addr;
         if (argc < 2) {
             fprintf(stderr,"ERROR, no port provided\n");
@@ -127,9 +129,11 @@ int main(int argc, char * argv[]) {
         if (bind(sockfd, (struct sockaddr *) &serv_addr,
                  sizeof(serv_addr)) < 0)
             fprintf(stderr,"ERROR on binding");
-        listen(sockfd,1);
-        clilen = sizeof(cli_addr);
-        newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+        listen(sockfd,5);
+        //clilen = sizeof(cli_addr);
+        socklen_t client_addr_size = sizeof(cli_addr);
+        clilen = (socklen_t* restrict) &client_addr_size;
+        newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, clilen);
         if (newsockfd < 0)
             fprintf(stderr,"ERROR on accept");
         
@@ -188,6 +192,7 @@ int main(int argc, char * argv[]) {
             }
             if ((pollFdGroup[2].revents & (POLLHUP | POLLERR))) {
                 fprintf(stderr,"client socket disconnected \n");
+                close(sockfd);
                 exit(0);
             }
         }
