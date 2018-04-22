@@ -24,9 +24,11 @@
 #include <netinet/in.h>
 #include <string.h>
 
-char isThereShell = 'N';
+char isTherePort = 'N';
 
 int fpid;
+
+int portNumber;
 
 void catch(){
     kill(fpid,13);
@@ -72,24 +74,19 @@ int writeWithError(int fd, char* buffer, int size)
     return RC;
 }
 
-void socketProcedure(int *newsockfd, int argc, char *argv[])
+void socketProcedure(int *newsockfd)
 {
     int sockfd;
-    int portno;
     socklen_t* restrict clilen;
     struct sockaddr_in serv_addr, cli_addr;
-    if (argc < 2) {
-        fprintf(stderr,"ERROR, no port provided\n");
-        exit(1);
-    }
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0)
         fprintf(stderr,"ERROR opening socket");
     memset((char *) &serv_addr, 0, sizeof(serv_addr));
-    portno = atoi(argv[1]);
+    //portno = atoi(argv[1]);
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = INADDR_ANY;
-    serv_addr.sin_port = htons(portno);
+    serv_addr.sin_port = htons(portNumber);
     if (bind(sockfd, (struct sockaddr *) &serv_addr,
              sizeof(serv_addr)) < 0)
         fprintf(stderr,"ERROR on binding");
@@ -109,8 +106,28 @@ int main(int argc, char * argv[]) {
         exit(1);
     }
     
+    static struct option long_options[] = {
+        {"port", required_argument, 0, 'P'},
+    };
+    
+    int ch;
+    while((ch = getopt_long(argc, argv,"",long_options,NULL))!=-1){
+        switch(ch){
+            case 'P':
+                portNumber = atoi(optarg);
+                isTherePort = 'Y';
+                break;
+            default:  exit(1); break;
+        }
+    }
+    
+    if(isTherePort == 'N'){
+        fprintf(stderr, "Error: No port number .\n");
+        exit(1);
+    }
+    
     int newsockfd;
-    socketProcedure(&newsockfd, argc, argv);
+    socketProcedure(&newsockfd);
     
     //Piping and forking procedure
     int toChildPip[2],toParentPip[3];
@@ -173,12 +190,26 @@ int main(int argc, char * argv[]) {
             }
             if ((pollFdGroup[1].revents & POLLIN)) {
                 int count = readWithError(toParentPip[0], newbuffer, 2048); // read from shell pipe
+                if(count == 0){
+                    fprintf(stderr,"received EOF from shell \n");
+                    int childstatus;
+                    if (waitpid(fpid, &childstatus, 0) == -1) {
+                        fprintf(stderr, "error: waitpid failed");
+                        exit(EXIT_FAILURE);
+                    }
+                    const int higher = WEXITSTATUS(childstatus);
+                    const int lower = WTERMSIG(childstatus);
+                    fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d\n", lower, higher);
+                    close(newsockfd);
+                    exit(0);
+                }
                 writeWithError(newsockfd,newbuffer,count);
             }
             if ((pollFdGroup[1].revents & (POLLHUP | POLLERR))) {
-                fprintf(stderr,"ANC \n");
+                fprintf(stderr,"receved shell POLLHUP/POLLERR \n");
                 exit(0);
             }
+            
             if ((pollFdGroup[2].revents & POLLIN)){
                 //fprintf(stderr,"BREAK 1 \n");
                 char buffer[256];
@@ -196,6 +227,10 @@ int main(int argc, char * argv[]) {
                     const int lower = WTERMSIG(childstatus);
                     fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d\n", lower, higher);
                     exit(0);
+                }
+                if(buffer[0] == '\04'){
+                    //fprintf(stderr,"received 04 from client \n");
+                    kill(fpid,SIGINT);
                 }
                 writeWithError(toChildPip[1],buffer,count);
             }
